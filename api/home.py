@@ -1,11 +1,8 @@
 # Importing all needed Flask classes
-from flask import Flask, jsonify, request, make_response, session
+from flask import Flask, jsonify, request, make_response, session, url_for, flash, g
 
-# Imporiting Flask Session Extention
-# from flask.ext.session import Session
-
-# Importing current user from flask
-from flask_login import current_user
+# Importing OAUTH Session
+from flask_oauthlib.client import OAuth
 
 # Importing firebase connection through python
 import pyrebase
@@ -39,6 +36,21 @@ authe = firebase.auth()
 app = Flask(__name__)
 
 app.secret_key = os.urandom(24)
+
+oauth = OAuth(app)
+
+# Twitter Oauth
+twitter = oauth.remote_app(
+    'twitter',
+    consumer_key='xBeXxg9lyElUgwZT6AZ0A',
+    consumer_secret='xU1L8fYe71matyfq2TNa6CpwVKbXTTS7Y60Sg1VJOmj4WBnjpY',
+    base_url='https://api.twitter.com/1.1/',
+    request_token_url='https://api.twitter.com/oauth/request_token',
+    access_token_url='https://api.twitter.com/oauth/access_token',
+    authorize_url='https://api.twitter.com/oauth/authorize'
+)
+
+# AUTHENTICATION
 
 # Register Function
 @app.route("/create-user", methods=['POST'])
@@ -114,18 +126,18 @@ def signIn():
 		# Creating dict to store data from database
 		returnedInfoInstagram = dict()
 		returnedInfoTwitter = dict()
-
+		
 		# For loops to gather information for each branch
 		for i in instagramItemList:
 
 			# Getting paths from database and assign to variable
-			instagramItem = database.child("users").child(uid).child("details").child("instagram").child(i).get().val()
-			returnedInfoInstagram[i] = instagramItem
+			instagramItem = database.child("users").child(uid).child("instagram").child(i).get().val()
+			returnedInfoInstagram[i] = str(instagramItem)
 
 		for i in twitterItemList:
 
 			# Getting paths from database and assign to variable
-			twitterItem = database.child("users").child(uid).child("details").child("twitter").child(i).get().val()
+			twitterItem = database.child("users").child(uid).child("twitter").child(i).get().val()
 			returnedInfoTwitter[i] = twitterItem
 
 	# If signin or gathering data fails will return failed
@@ -177,9 +189,47 @@ def instagramGetBasic():
 		sessionData = 'None'
 	return jsonify({ 'message' : sessionData})
 
+@app.route("/delete-user", methods=['POST'])
+def deleteUser():
+	password = request.json['password']
+	print(session['data'][0]['password'])
+	if password == session['data'][0]['password']:
+		user = session['user']
+		delete_user_account(user, user['idToken'])
+		returnValue = "Deleted"
+	else:
+		returnValue = "Password wrong"
+
+	return jsonify({ 'message' : returnValue })
+	
+
+
+
+# def delete_user_account(self, id_token):
+# 	request_ref = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/deleteAccount?key={0}".format(self.api_key)
+# 	headers = {"content-type": "application/json; charset=UTF-8"}
+# 	data = json.dumps({"idToken": id_token})
+# 	request_object = requests.post(request_ref, headers=headers, data=data)
+# 	raise_detailed_error(request_object)
+# 	return request_object.json()
+
 
 
 # TWITTER FUNCTIONS
+@app.route("/twitter-login")
+def twitterLogin():
+	callback_url = url_for('oauthorized', next=request.args.get('next'))
+	return twitter.authorize(callback=callback_url or request.referrer or None)
+
+@app.route('/oauthorized')
+def oauthorized():
+    resp = twitter.authorized_response()
+    if resp is None:
+        flash('You denied the request to sign in.')
+    else:
+        session['twitter_oauth'] = resp
+    return redirect(url_for('index'))
+
 
 # Twitter function to get basic user information
 @app.route("/twitter-get-basic", methods=['GET'])
